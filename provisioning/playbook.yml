@@ -1,0 +1,8 @@
+---
+- name: Intial Setup
+  hosts: all
+  become: true
+  remote_user: root
+
+  roles:
+    - common

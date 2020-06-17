@@ -1,0 +1,78 @@
+#### The mangle table
+# This table allows us to modify packet headers
+# Packets enter this table first
+#
+*mangle
+
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+COMMIT
+
+#### The nat table
+# This table enables Network Address Translation
+# (This is technically a type of packet mangling)
+#
+*nat
+
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+COMMIT
+
+#### The filter table
+# The default ipfilter table
+#
+*filter
+
+# By default, drop packets that are destined for this server
+:INPUT DROP [0:0]
+# By default, drop packets that request to be forwarded by this server
+:FORWARD DROP [0:0]
+# By default, accept any packets originating from this server
+:OUTPUT ACCEPT [0:0]
+
+# Create the ICMPV6-CHECK chain and its log chain
+# These chains are used later to prevent a type of bug that would
+# allow malicious traffic to reach over the server into the private network
+# An instance of such a bug on Cisco software is described here:
+# https://www.insinuator.net/2016/05/cve-2016-1409-ipv6-ndp-dos-vulnerability-in-cisco-software/
+# other software implementations might be at least as broken as the one in CISCO gear.
+:ICMPV6-CHECK - [0:0]
+:ICMPV6-CHECK-LOG - [0:0]
+
+# Accept packets destined for localhost
+-A INPUT -i lo -j ACCEPT
+# Accept any packet from an open TCP connection
+-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# Accept packets using the encapsulation protocol
+-A INPUT -p esp -j ACCEPT
+-A INPUT -m ah -j ACCEPT
+# rate limit ICMP traffic per source
+-A INPUT -p icmpv6 --icmpv6-type echo-request -m hashlimit --hashlimit-upto 5/s --hashlimit-mode srcip --hashlimit-srcmask 32 --hashlimit-name icmp-echo-drop -j ACCEPT
+# Allow new traffic to port {{ ansible_ssh_port|default(22) }} (SSH)
+-A INPUT -p tcp --dport {{ ansible_ssh_port|default(22) }} -m conntrack --ctstate NEW -j ACCEPT
+
+# Accept properly formatted Neighbor Discovery Protocol packets
+-A INPUT -p icmpv6 --icmpv6-type router-advertisement -m hl --hl-eq 255 -j ACCEPT
+-A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation -m hl --hl-eq 255 -j ACCEPT
+-A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement -m hl --hl-eq 255 -j ACCEPT
+-A INPUT -p icmpv6 --icmpv6-type redirect -m hl --hl-eq 255 -j ACCEPT
+
+# DHCP in AWS
+-A INPUT -m conntrack --ctstate NEW -m udp -p udp --dport 546 -d fe80::/64 -j ACCEPT
+
+-A FORWARD -j ICMPV6-CHECK
+
+# Use the ICMPV6-CHECK chain, described above
+-A ICMPV6-CHECK -p icmpv6 -m hl ! --hl-eq 255 --icmpv6-type router-solicitation -j ICMPV6-CHECK-LOG
+-A ICMPV6-CHECK -p icmpv6 -m hl ! --hl-eq 255 --icmpv6-type router-advertisement -j ICMPV6-CHECK-LOG
+-A ICMPV6-CHECK -p icmpv6 -m hl ! --hl-eq 255 --icmpv6-type neighbor-solicitation -j ICMPV6-CHECK-LOG
+-A ICMPV6-CHECK -p icmpv6 -m hl ! --hl-eq 255 --icmpv6-type neighbor-advertisement -j ICMPV6-CHECK-LOG
+-A ICMPV6-CHECK-LOG -j LOG --log-prefix "ICMPV6-CHECK-LOG DROP "
+-A ICMPV6-CHECK-LOG -j DROP
+
+COMMIT

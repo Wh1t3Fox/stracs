@@ -1,0 +1,13 @@
+---
+- name: Check the system
+  raw: uname -a
+  register: OS
+  changed_when: false
+
+- include_tasks: ubuntu.yml
+  when: '"Ubuntu" in OS.stdout or "Linux" in OS.stdout'
+
+- name: Install Python Pkgs
+  pip:
+    name: "{{ pip_packages|default([]) }}"
+    executable: pip3

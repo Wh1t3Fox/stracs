@@ -1,0 +1,52 @@
+#### The mangle table
+# This table allows us to modify packet headers
+# Packets enter this table first
+#
+*mangle
+
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+COMMIT
+
+
+#### The nat table
+# This table enables Network Address Translation
+# (This is technically a type of packet mangling)
+#
+*nat
+
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+COMMIT
+
+
+#### The filter table
+# The default ipfilter table
+#
+*filter
+
+# By default, drop packets that are destined for this server
+:INPUT DROP [0:0]
+# By default, drop packets that request to be forwarded by this server
+:FORWARD DROP [0:0]
+# By default, accept any packets originating from this server
+:OUTPUT ACCEPT [0:0]
+
+# Accept packets destined for localhost
+-A INPUT -i lo -j ACCEPT
+# Accept any packet from an open TCP connection
+-A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# Accept packets using the encapsulation protocol
+-A INPUT -p esp -j ACCEPT
+-A INPUT -p ah -j ACCEPT
+# rate limit ICMP traffic per source
+-A INPUT -p icmp --icmp-type echo-request -m hashlimit --hashlimit-upto 5/s --hashlimit-mode srcip --hashlimit-srcmask 32 --hashlimit-name icmp-echo-drop -j ACCEPT
+# Allow new traffic to port {{ ansible_ssh_port|default(22) }} (SSH)
+-A INPUT -p tcp --dport {{ ansible_ssh_port|default(22) }} -m conntrack --ctstate NEW -j ACCEPT
+
+COMMIT

@@ -1,0 +1,32 @@
+---
+
+# user:abc123!!!
+user_account:
+    name: user
+    password: $6$/tN2c6iEc263cr3u$83hThyeWLC9fvneq/GCKY09bSP0S.wgOM5gtJSSCy6J7jVOckm2P8mN8K.bKfmSpuZvcbLMEp0y1bKX94CjDN1 
+
+sys_packages: [
+    "apparmor-utils",
+    "coreutils",
+    "curl", 
+    "docker.io", 
+    "git", 
+    "gnupg2",
+    "iptables-persistent",
+    "openvpn",
+    "python3-pip", 
+    "screen", 
+    "tmux",
+    "tor",
+    "vim",
+    "xfce4" 
+]
+
+pip_packages: [
+    "docker-compose",
+    "siranga"
+]
+
+unattended_reboot:
+  enabled: true
+  time: 00:00  

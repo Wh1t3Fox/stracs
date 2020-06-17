@@ -1,0 +1,88 @@
+---
+- name: Gather facts
+  setup:
+
+- name: Install software updates
+  apt:
+    update_cache: true
+    install_recommends: true
+    upgrade: dist
+  register: result
+  until: result is succeeded
+  retries: 30
+  delay: 10
+
+- name: Check if reboot is required
+  block:
+    - name: Check for reboot
+      shell: >
+        if [[ -e /var/run/reboot-required ]]; then echo "required"; else echo "no"; fi
+      args:
+        executable: /bin/bash
+      register: reboot_required
+
+    - name: Reboot
+      shell: sleep 2 && shutdown -r now "Ansible updates triggered"
+      async: 1
+      poll: 0
+      when: reboot_required is defined and reboot_required.stdout == 'required'
+      ignore_errors: true
+
+    - name: Wait until the server becomes ready...
+      wait_for_connection:
+        delay: 20
+        timeout: 320
+      when: reboot_required is defined and reboot_required.stdout == 'required'
+      become: false
+  when: not ansible_connection is search("local")
+
+- name: Include unatteded upgrades configuration
+  import_tasks: unattended-upgrades.yml
+
+- meta: flush_handlers
+
+- name: Install headers
+  apt:
+    name:
+      - linux-headers-generic
+      - "linux-headers-{{ ansible_kernel }}"
+    state: present
+
+- name: Install pkgs
+  apt:
+    name: "{{ sys_packages|default([]) }}"
+    state: present
+    update_cache: true
+
+- name: Check for 'wheel' group
+  group:
+    name: wheel
+    state: present
+
+- name: Allow 'wheel' group to have passwordless sudo
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%wheel'
+    line: '%wheel ALL=(ALL) NOPASSWD: ALL'
+    validate: '/usr/sbin/visudo -cf %s'
+
+- name: Create new user with sudo
+  user:
+    name: "{{ user_account.name }}"
+    password: "{{ user_account.password }}" 
+    state: present
+    groups: wheel, docker
+    append: true
+    create_home: true
+    shell: /bin/bash
+
+- name: Disable password auth for root
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    state: present
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin prohibit-password'
+
+- include_tasks: iptables.yml
+  tags: iptables
